@@ -1,0 +1,118 @@
+import numpy
+from RRTTree import RRTTree
+
+class RRTPlanner(object):
+
+    def __init__(self, planning_env, visualize):
+        self.planning_env = planning_env
+        self.visualize = visualize
+        
+
+    def Plan(self, start_config, goal_config, epsilon = 0.001):
+        
+        tree = RRTTree(self.planning_env, start_config)
+        plan = []
+        if self.visualize and hasattr(self.planning_env, 'InitializePlot'):
+            self.planning_env.InitializePlot(goal_config)
+        
+        # Plan with nodes and there parent
+        plan_temp = {tuple(start_config):None}
+        
+        # Path Cost of all the nodes
+        path_cost = {tuple(start_config):0}
+        
+        # Total cost of all the nodes
+        total_cost = {tuple(start_config):self.planning_env.ComputeDistance(start_config,goal_config)}
+        
+        count = 0
+
+        self.env = self.planning_env.robot.GetEnv()
+        robot_name = self.env.GetBodies()[0].GetName()
+        
+        #Optimum cost
+        Copt = self.planning_env.ComputeDistance(start_config,goal_config)
+
+        # Threshold
+        pmin_threshold = 1
+
+        while(1):
+            
+
+            if count%10 == 0: # After every 5th iteration, take the goal as sample
+                sample_config = goal_config
+                color = 'r'
+            else:
+                sample_config = self.planning_env.GenerateRandomConfiguration()
+                color = 'k'
+
+            vid1, nearest_vertex = tree.GetNearestVertex(sample_config) # Finding the nearest vertex
+            
+            Cq = path_cost[tuple(nearest_vertex)] + \
+                    self.planning_env.ComputeDistance(nearest_vertex,sample_config) + \
+                    self.planning_env.ComputeDistance(sample_config,goal_config)
+
+            total_cost[tuple(sample_config)] = Cq
+            Cmax = max(total_cost.values())
+            
+            m_q = 1 - (Cq - Copt)/(Cmax - Copt)
+            
+            p = max(m_q,pmin_threshold)
+            
+            random_val = numpy.random.rand()
+            
+            sample_extend_config = self.planning_env.Extend(nearest_vertex,sample_config) # Checking for collision
+                
+            if random_val < p and (sample_extend_config != nearest_vertex).any():
+                path_cost[tuple(sample_extend_config)] = path_cost[tuple(nearest_vertex)] + \
+                        self.planning_env.ComputeDistance(nearest_vertex,sample_extend_config)
+                total_cost[tuple(sample_extend_config)] = path_cost[tuple(sample_extend_config)] + \
+                                                          self.planning_env.ComputeDistance(sample_extend_config,goal_config)  
+
+                plan_temp[tuple(sample_extend_config)] = nearest_vertex
+                vid2 = tree.AddVertex(sample_extend_config)   
+                tree.AddEdge(vid1,vid2)
+                #self.planning_env.PlotEdge(nearest_vertex,sample_extend_config,color)
+                
+                #print "SCG: ", sample_extend_config," SC: ", goal_config
+                if (sample_extend_config == goal_config).all(): # Break Condition
+                    break;
+                distance = self.planning_env.ComputeDistance(sample_extend_config,goal_config)
+                #print "D: " , distance
+                if self.planning_env.ComputeDistance(sample_extend_config,goal_config) < 0.01: # Break Condition
+                    break;
+
+
+            count = count + 1
+
+        if plan_temp.get(tuple(goal_config)) != None:
+            plan.append(goal_config)
+
+        
+        traverse_config = goal_config
+        
+        print traverse_config
+        print goal_config
+        print start_config
+
+        print (traverse_config != start_config)
+        print (traverse_config != start_config).any()
+
+        print plan_temp
+
+        while (traverse_config != start_config).any():
+            
+            # Visualize
+            if self.visualize:
+                start = traverse_config
+                end = plan_temp.get(tuple(traverse_config))
+                self.planning_env.PlotEdge(start,end,'y')
+            
+            traverse_config = plan_temp.get(tuple(traverse_config))
+            print traverse_config, "   ",  plan_temp.get(tuple(traverse_config))
+            plan.append(traverse_config)
+
+        plan.reverse()
+
+        print type(plan)
+        print len(plan)
+        return plan
